@@ -1,0 +1,11 @@
+[package]
+name = "domain"
+version = "0.1.0"
+edition.workspace = true
+publish.workspace = true
+
+# Pure business rules. Keep this crate free of IO: no axum, sqlx, tokio.
+[dependencies]
+
+[lints]
+workspace = true

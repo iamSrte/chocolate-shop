@@ -1,0 +1,21 @@
+# Rust
+/target/
+**/target/
+
+# JS / Bun
+node_modules/
+dist/
+.output/
+.vinxi/
+.tanstack/
+
+# Env
+.env
+.env.*
+!.env.example
+
+# OS / editors
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json

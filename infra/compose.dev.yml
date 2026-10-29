@@ -1,0 +1,20 @@
+# Local development only. Run via `just db-up`.
+name: chocolate-shop
+services:
+  db:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_USER: chocolate
+      POSTGRES_PASSWORD: chocolate
+      POSTGRES_DB: chocolate_shop
+    ports:
+      - "5432:5432"
+    volumes:
+      - db-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U chocolate -d chocolate_shop"]
+      interval: 5s
+      retries: 10
+
+volumes:
+  db-data:

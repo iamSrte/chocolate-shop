@@ -1,0 +1,103 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      backend: ${{ steps.filter.outputs.backend }}
+      frontend: ${{ steps.filter.outputs.frontend }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dorny/paths-filter@v4
+        id: filter
+        with:
+          filters: |
+            shared: &shared
+              - justfile
+              - .github/workflows/ci.yml
+            backend:
+              - *shared
+              - backend/**
+            frontend:
+              - *shared
+              - frontend/**
+
+  backend:
+    needs: changes
+    if: needs.changes.outputs.backend == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    # For `#[sqlx::test]`: each test gets its own temp database.
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_USER: chocolate
+          POSTGRES_PASSWORD: chocolate
+          POSTGRES_DB: chocolate_shop
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U chocolate -d chocolate_shop"
+          --health-interval 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgres://chocolate:chocolate@localhost:5432/chocolate_shop
+      # Compile-time query checks read the committed .sqlx/ cache, not the live DB.
+      SQLX_OFFLINE: "true"
+    steps:
+      - uses: actions/checkout@v7
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: backend
+      - run: cargo fmt --all -- --check
+      - run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - run: cargo test --workspace --locked
+
+  # Fails if the committed OpenAPI spec or TS client is stale. Fix: `just openapi`.
+  api-client:
+    needs: changes
+    if: needs.changes.outputs.backend == 'true' || needs.changes.outputs.frontend == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: backend
+      - uses: oven-sh/setup-bun@v2
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: just
+      - run: bun install --frozen-lockfile
+        working-directory: frontend
+      - run: just openapi
+      - run: git diff --exit-code -- frontend/api-client
+      - run: bun run --filter '*' typecheck
+        working-directory: frontend
+
+  api-image:
+    needs: [changes, backend]
+    if: needs.changes.outputs.backend == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: docker/setup-buildx-action@v4
+      # Build only. Push + VPS deploy come once the registry and host are chosen.
+      - uses: docker/build-push-action@v7
+        with:
+          context: backend
+          file: backend/api/Dockerfile
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

@@ -1,0 +1,5 @@
+{
+  "name": "chocolate-shop",
+  "private": true,
+  "workspaces": ["api-client"]
+}
