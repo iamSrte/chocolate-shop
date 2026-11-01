@@ -24,17 +24,26 @@ Backend first. Frontend work starts only after the design language is ready.
   - `routes.rs`: public handlers. `admin.rs`: admin handlers.
   - `repo.rs`: SQL. `dto.rs`: request/response types (`ToSchema`).
 - All routes live under `/api` on the site's domain, with no version prefix. Admin routes go under `/api/admin/...`, behind an admin-role guard.
-- Errors: return `AppError` (`api/src/error.rs`). It renders as `{ "code", "message" }`; the frontend branches on `code`.
+- Errors (ADR 0004): return `AppError` (`api/src/error.rs`). It renders as `ErrorBody` `{ code, message, details?, request_id? }`; the frontend branches on `code`.
+  - Domain modules return their own `thiserror` enum. Add it to `AppError` with `#[from]` and map it in `status_and_code`, nowhere else.
+  - `ErrorCode` is append-only, snake_case, named with glossary terms. Never rename a shipped code.
+  - Unexpected failures: `?` into `Database` or `Internal(anyhow)` with `.context(...)`. Never auto-map constraint violations; check the constraint name in the repo.
+- Extractors: use `crate::extract::{Json, Path, Query, ValidJson}`, not axum's, so rejections render as `ErrorBody`. Request DTOs derive `garde::Validate` and use `ValidJson`.
+- Middleware (`api/src/middleware.rs`): request ID, trace span, error normalisation, panic catcher, timeout, body limit. Tests get the same stack.
+- Config: add a var to `RawConfig` in `api/src/config.rs` and to `.env.example`. Secrets are `SecretString`. Read once at startup; no `std::env::var` elsewhere.
+- Logging: `tracing` macros with structured fields (`tracing::info!(box_id = %id, "...")`), never `println!`.
 - SQL: use the `query!`/`query_as!` checked macros. Commit the `.sqlx/` cache (`cargo sqlx prepare --workspace`) so CI builds offline.
 - Migrations: `api/migrations/`, embedded and run at API startup.
-- Tests: domain logic gets plain unit tests. DB code is tested with `#[sqlx::test]` against real Postgres.
+- Tests: domain logic gets plain unit tests. DB code is tested with `#[sqlx::test]` against real Postgres. HTTP tests use `TestApp` from `api/tests/common` (`TestApp::new(pool)` or `TestApp::without_db()`).
 
 ## Commands
 
 - `just db-up`: local Postgres. Copy `.env.example` to `.env` first.
 - `just dev-api`: run the API on `API_ADDR` (default `127.0.0.1:3000`). Needs the DB up, since migrations run at startup.
+- `just watch-api`: same, restarted on save (bacon). `just tools` installs nextest, bacon, sqlx-cli.
+- `just db-reset`: drop, recreate, migrate the local DB. `just sqlx-prepare`: refresh `.sqlx/`.
 - `just openapi`: regenerate `frontend/api-client/openapi.json` + `src/schema.d.ts`. Run after any API change; CI fails on drift.
-- `just check`: fmt check, clippy `-D warnings`, typecheck, tests. Same as CI.
+- `just check`: fmt check, clippy `-D warnings`, typecheck, tests (nextest + doc tests), OpenAPI drift. Same as CI.
 
 `frontend/api-client` pins TypeScript 5: `openapi-typescript` uses the TS 5 compiler API, which TS 7 lacks.
 

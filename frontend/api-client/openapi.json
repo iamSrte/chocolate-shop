@@ -63,18 +63,69 @@
     "schemas": {
       "ErrorBody": {
         "type": "object",
-        "description": "JSON error body. The frontend branches on `code`; `message` is for logs and debugging.",
+        "description": "JSON body of every non-2xx response.",
         "required": [
           "code",
           "message"
         ],
         "properties": {
           "code": {
-            "type": "string",
-            "description": "Stable snake_case key, e.g. `not_found`, `box_not_full`."
+            "$ref": "#/components/schemas/ErrorCode"
+          },
+          "details": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ErrorDetails"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "message": {
-            "type": "string"
+            "type": "string",
+            "description": "For logs and debugging. Never shown to customers as-is."
+          },
+          "request_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Set on 5xx only, so a customer can quote it. Matches the `x-request-id` header."
+          }
+        }
+      },
+      "ErrorCode": {
+        "type": "string",
+        "description": "Stable machine-readable error key. The frontend branches on it.\n\nAppend-only: once shipped, never rename or reuse a variant. Name domain codes with\n`GLOSSARY.md` terms, e.g. `box_not_full`.",
+        "enum": [
+          "not_found",
+          "method_not_allowed",
+          "payload_too_large",
+          "timeout",
+          "bad_request",
+          "validation_failed",
+          "internal"
+        ]
+      },
+      "ErrorDetails": {
+        "type": "object",
+        "required": [
+          "fields"
+        ],
+        "properties": {
+          "fields": {
+            "type": "object",
+            "description": "Messages per invalid field, keyed by field path, e.g. `address.city`.",
+            "additionalProperties": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "propertyNames": {
+              "type": "string"
+            }
           }
         }
       },

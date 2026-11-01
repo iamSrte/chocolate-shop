@@ -1,28 +1,23 @@
-use api::AppState;
-use axum::{body::Body, http::Request, http::StatusCode};
-use http_body_util::BodyExt;
-use sqlx::postgres::PgPoolOptions;
-use tower::ServiceExt;
+mod common;
 
-fn app() -> axum::Router {
-    // Lazy pool never connects unless a handler queries it.
-    let db = PgPoolOptions::new()
-        .connect_lazy("postgres://unused@localhost/unused")
-        .unwrap();
-    api::router(AppState { db })
-}
+use axum::http::StatusCode;
+use common::TestApp;
+use sqlx::PgPool;
 
 #[tokio::test]
 async fn health_returns_ok() {
-    let res = app()
-        .oneshot(Request::get("/api/health").body(Body::empty()).unwrap())
-        .await
-        .unwrap();
+    let res = TestApp::without_db().get("/api/health").await;
 
-    assert_eq!(res.status(), StatusCode::OK);
-    let body = res.into_body().collect().await.unwrap().to_bytes();
-    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
-    assert_eq!(json["status"], "ok");
+    assert_eq!(res.status, StatusCode::OK);
+    assert_eq!(res.json["status"], "ok");
+}
+
+#[sqlx::test]
+async fn ready_returns_ok_with_db(pool: PgPool) {
+    let res = TestApp::new(pool).get("/api/health/ready").await;
+
+    assert_eq!(res.status, StatusCode::OK);
+    assert_eq!(res.json["status"], "ok");
 }
 
 #[tokio::test]
