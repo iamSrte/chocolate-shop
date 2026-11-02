@@ -42,11 +42,28 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
-        /** @description JSON error body. The frontend branches on `code`; `message` is for logs and debugging. */
+        /** @description JSON body of every non-2xx response. */
         ErrorBody: {
-            /** @description Stable snake_case key, e.g. `not_found`, `box_not_full`. */
-            code: string;
+            code: components["schemas"]["ErrorCode"];
+            details?: components["schemas"]["ErrorDetails"] | null;
+            /** @description For logs and debugging. Never shown to customers as-is. */
             message: string;
+            /** @description Set on 5xx only, so a customer can quote it. Matches the `x-request-id` header. */
+            request_id?: string | null;
+        };
+        /**
+         * @description Stable machine-readable error key. The frontend branches on it.
+         *
+         *     Append-only: once shipped, never rename or reuse a variant. Name domain codes with
+         *     `GLOSSARY.md` terms, e.g. `box_not_full`.
+         * @enum {string}
+         */
+        ErrorCode: "not_found" | "method_not_allowed" | "payload_too_large" | "timeout" | "bad_request" | "validation_failed" | "internal";
+        ErrorDetails: {
+            /** @description Messages per invalid field, keyed by field path, e.g. `address.city`. */
+            fields: {
+                [key: string]: string[];
+            };
         };
         Health: {
             status: string;

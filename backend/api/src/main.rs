@@ -1,24 +1,23 @@
-use api::{AppState, config::Config};
+use api::{AppState, config::Config, telemetry};
+use secrecy::ExposeSecret;
 use sqlx::postgres::PgPoolOptions;
 use tokio::net::TcpListener;
-use tower_http::trace::TraceLayer;
-use tracing_subscriber::EnvFilter;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    tracing_subscriber::fmt()
-        .with_env_filter(EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()))
-        .init();
+    let config = Config::load()?;
+    telemetry::init(config.log_format);
+    tracing::debug!(?config, "config loaded");
 
-    let config = Config::from_env()?;
     let db = PgPoolOptions::new()
-        .max_connections(10)
-        .connect(&config.database_url)
+        .max_connections(config.db.max_connections)
+        .acquire_timeout(config.db.acquire_timeout)
+        .connect(config.db.url.expose_secret())
         .await?;
     // Embedded from `migrations/`. Safe while only one API instance runs.
     sqlx::migrate!().run(&db).await?;
 
-    let app = api::router(AppState { db }).layer(TraceLayer::new_for_http());
+    let app = api::router(AppState { db }, &config.http);
 
     let listener = TcpListener::bind(config.addr).await?;
     tracing::info!(addr = %config.addr, "listening");
